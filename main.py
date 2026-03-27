@@ -12,7 +12,7 @@ TELEGRAM_CHAT_ID = os.environ.get('TELEGRAM_CHAT_ID')
 
 def get_jonggeundang_products():
     today = datetime.datetime.now().strftime('%Y%m%d')
-    url = 'http://apis.data.go.kr/1471000/DrugPrdtPrmsnInfoService05/getDrugPrdtPrmsnInq05'
+    url = 'http://apis.data.go.kr/1471000/DrugPrdtPrmsnInfoService07/getDrugPrdtPrmsnInq07'
     
     # 한글 업체명과 인증키를 안전하게 파라미터로 구성
     params = {
