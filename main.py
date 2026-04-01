@@ -10,65 +10,43 @@ def check_pharm_approvals():
     url = 'http://apis.data.go.kr/1471000/DrugPrdtPrmsnInfoService07/getDrugPrdtPrmsnInq07'
     
     try:
-        # 1. 전체 데이터가 몇 건인지 먼저 확인 (마지막 페이지를 알기 위함)
+        # 1. 전체 데이터 개수 확인 (마지막 페이지 계산)
         count_res = requests.get(url, params={'serviceKey': api_key, 'type': 'json', 'numOfRows': '1'}, timeout=30)
-        total_count = count_res.json().get('body', {}).get('totalCount', 44000)
+        total_count = count_res.json().get('body', {}).get('totalCount', 45000)
+        last_page = (total_count // 100)
         
-        # 2. 마지막 페이지 번호 계산 (100건씩 볼 때 가장 마지막 페이지)
-        last_page = (total_count // 100) + 1
-        
-        # 3. 마지막 페이지(가장 최신 데이터 구역) 조회
-        params = {
-            'serviceKey': api_key,
-            'type': 'json',
-            'numOfRows': '100',
-            'pageNo': str(last_page)
-        }
-        
-        res = requests.get(url, params=params, timeout=30)
-        items_data = res.json().get('body', {}).get('items', [])
-        items = [items_data] if isinstance(items_data, dict) else items_data
-
         found = []
-        today = datetime.today()
-        limit_date = today - timedelta(days=7)  # 최근 7일 날짜
-        limit_date_str = limit_date.strftime('%Y-%m-%d')  # 비교용 날짜 (YYYY-MM-DD)
+        limit_date = (datetime.today() - timedelta(days=7)).strftime('%Y-%m-%d')
 
-        if items:
-            # 가져온 데이터를 날짜 최신순으로 다시 정렬
-            items.sort(key=lambda x: datetime.strptime(str(x.get('prmsn_dt', '')), '%Y-%m-%d') if x.get('prmsn_dt') else datetime.min, reverse=True)
+        # 2. 마지막 구역 200건(안전하게 2개 페이지) 조회
+        for page in [last_page, last_page + 1]:
+            params = {'serviceKey': api_key, 'type': 'json', 'numOfRows': '100', 'pageNo': str(page)}
+            res = requests.get(url, params=params, timeout=30)
+            items_raw = res.json().get('body', {}).get('items', [])
+            items = [items_raw] if isinstance(items_raw, dict) else items_raw
 
-            for i in items:
-                entp = str(i.get('entp_name', ''))
-                item_name = str(i.get('item_name', ''))
-                prmsn_dt = str(i.get('prmsn_dt', ''))  # 날짜 형식 그대로 가져옴
+            if items:
+                for i in items:
+                    # 필드명 수정: entp_eng_name (공식 명칭)
+                    entp_eng = str(i.get('entp_eng_name', '')).upper() 
+                    item_name = str(i.get('item_name', ''))
+                    prmsn_dt = str(i.get('prmsn_dt', '')) # '2026-03-27' 형식 유지
 
-                # 날짜 출력 (디버깅용)
-                print(f"허가일(prmsn_dt): {prmsn_dt}, 비교 날짜(limit_date): {limit_date_str}")
+                    # 검색 조건: 대문자로 통일해서 'CHONG KUN DANG' 포함 여부 확인
+                    if 'CHONG KUN DANG' in entp_eng and prmsn_dt >= limit_date:
+                        found.append(f"✅ {item_name} ({prmsn_dt})")
 
-                # 최근 7일 이내 + 종근당 포함 여부 체크
-                if '종근당' in entp and prmsn_dt >= limit_date_str:
-                    found.append(f"✅ {item_name} ({prmsn_dt})")
-
-        # 4. 텔레그램 전송
+        # 3. 메시지 전송
         if found:
-            msg = f"🚀 [종근당 신규 허가 확인!]\n\n" + "\n".join(sorted(list(set(found)), reverse=True))
+            msg = f"🚀 [CKD 영문명 기반 허가 알림]\n\n" + "\n".join(sorted(list(set(found)), reverse=True))
         else:
-            # 2026년 데이터가 맞는지 확인용 샘플
-            sample_name = items[0].get('item_name', '제품명없음') if items else "데이터없음"
-            sample_date = items[0].get('prmsn_dt', '날짜없음') if items else "날짜없음"
-            msg = (f"🔔 최근 1주일 종근당 내역 없음\n"
-                   f"━━━━━━━━━━━━━━━━━━\n"
-                   f"📦 API 최신 구역 제품:\n"
-                   f"👉 {sample_name}\n"
-                   f"📅 허가일자: {sample_date}\n"
-                   f"━━━━━━━━━━━━━━━━━━\n"
-                   f"※ 이 날짜가 2026년 3월이면 로봇이 정확한 위치를 찾은 겁니다.")
+            # 작동 확인용 샘플
+            msg = f"🔔 최근 1주일 종근당(CKD) 내역 없음\n(기준: {limit_date} 이후)"
 
         requests.post(f"https://api.telegram.org/bot{token}/sendMessage", data={'chat_id': chat_id, 'text': msg})
 
     except Exception as e:
-        requests.post(f"https://api.telegram.org/bot{token}/sendMessage", data={'chat_id': chat_id, 'text': f"❌ 에러: {str(e)}"})
+        requests.post(f"https://api.telegram.org/bot{token}/sendMessage", data={'chat_id': chat_id, 'text': f"❌ 에러 상세: {str(e)}"})
 
 if __name__ == "__main__":
     check_pharm_approvals()
