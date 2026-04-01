@@ -31,19 +31,20 @@ def check_pharm_approvals():
 
         found = []
         today = datetime.today()
-        limit_date = (today - timedelta(days=7)).strftime('%Y%m%d')
+        limit_date = today - timedelta(days=7)  # 최근 7일
+        limit_date_str = limit_date.strftime('%Y%m%d')  # 비교용 날짜 (YYYYMMDD)
 
         if items:
             # 가져온 데이터를 날짜 최신순으로 다시 정렬
-            items.sort(key=lambda x: str(x.get('prmsn_dt', '')), reverse=True)
+            items.sort(key=lambda x: datetime.strptime(str(x.get('prmsn_dt', '')), '%Y-%m-%d') if x.get('prmsn_dt') else datetime.min, reverse=True)
 
             for i in items:
                 entp = str(i.get('entp_name', ''))
                 item_name = str(i.get('item_name', ''))
-                prmsn_dt = str(i.get('prmsn_dt', '')).replace('-', '')
+                prmsn_dt = str(i.get('prmsn_dt', '')).replace('-', '')  # 날짜 형식 일관성 처리
 
                 # 최근 7일 이내 + 종근당 포함 여부 체크
-                if '종근당' in entp and prmsn_dt >= limit_date:
+                if '종근당' in entp and prmsn_dt >= limit_date_str:
                     found.append(f"✅ {item_name} ({prmsn_dt})")
 
         # 4. 텔레그램 전송
