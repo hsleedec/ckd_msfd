@@ -31,8 +31,8 @@ def check_pharm_approvals():
 
         found = []
         today = datetime.today()
-        limit_date = today - timedelta(days=7)  # 최근 7일
-        limit_date_str = limit_date.strftime('%Y%m%d')  # 비교용 날짜 (YYYYMMDD)
+        limit_date = today - timedelta(days=7)  # 최근 7일 날짜
+        limit_date_str = limit_date.strftime('%Y-%m-%d')  # 비교용 날짜 (YYYY-MM-DD)
 
         if items:
             # 가져온 데이터를 날짜 최신순으로 다시 정렬
@@ -41,7 +41,10 @@ def check_pharm_approvals():
             for i in items:
                 entp = str(i.get('entp_name', ''))
                 item_name = str(i.get('item_name', ''))
-                prmsn_dt = str(i.get('prmsn_dt', '')).replace('-', '')  # 날짜 형식 일관성 처리
+                prmsn_dt = str(i.get('prmsn_dt', ''))  # 날짜 형식 그대로 가져옴
+
+                # 날짜 출력 (디버깅용)
+                print(f"허가일(prmsn_dt): {prmsn_dt}, 비교 날짜(limit_date): {limit_date_str}")
 
                 # 최근 7일 이내 + 종근당 포함 여부 체크
                 if '종근당' in entp and prmsn_dt >= limit_date_str:
