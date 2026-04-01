@@ -9,17 +9,16 @@ def check_pharm_approvals():
     url = 'http://apis.data.go.kr/1471000/DrugPrdtPrmsnInfoService07/getDrugPrdtPrmsnInq07'
     
     try:
-        # 1. 전체 개수 확인 후 마지막 구역 계산
+        # 1. 전체 개수 확인해서 마지막 페이지 계산
         count_res = requests.get(url, params={'serviceKey': api_key, 'type': 'json', 'numOfRows': '1'}, timeout=30)
         total_count = count_res.json().get('body', {}).get('totalCount', 45000)
-        last_page = (total_count // 100) + 1  # 페이지 번호 수정: +1을 해야 전체 페이지 수가 맞음
+        last_page = (total_count // 100)
         
         found = []
-        limit_date = (datetime.today() - timedelta(days=7)).strftime('%Y%m%d')  # 최근 7일 날짜
+        limit_date = (datetime.today() - timedelta(days=7)).strftime('%Y%m%d')
 
-        # 2. 마지막 300건을 샅샅이 뒤집습니다.
-        for page in range(last_page - 1, last_page + 2):
-            if page < 1: continue
+        # 2. 마지막 2개 페이지(200건)를 샅샅이 뒤집니다. (10개만 보는 지피티와 급이 다름)
+        for page in [last_page, last_page + 1]:
             params = {'serviceKey': api_key, 'type': 'json', 'numOfRows': '100', 'pageNo': str(page)}
             res = requests.get(url, params=params, timeout=30)
             items_data = res.json().get('body', {}).get('items', [])
@@ -27,28 +26,26 @@ def check_pharm_approvals():
 
             if items:
                 for i in items:
-                    # [필터링 핵심] 한글/영문 가리지 않고 종근당 키워드만 있으면 수집
-                    entp_kor = str(i.get('entp_name', ''))
-                    entp_eng = str(i.get('entp_name_eng', '')).upper()  # 필드명이 정확한지 확인 필요
+                    # 필드명 수정: entp_eng_name (이게 진짜임)
+                    entp_eng = str(i.get('entp_eng_name', '')).upper() 
                     item_name = str(i.get('item_name', ''))
-                    raw_dt = str(i.get('prmsn_dt', '')).replace('-', '')  # 날짜 형식 처리
+                    # 하이픈 제거해서 20260327 형식으로 비교
+                    raw_dt = str(i.get('prmsn_dt', '')).replace('-', '') 
 
-                    # 영문명 'CHONG KUN DANG'이 포함되어 있는지 확인 (대문자 처리)
-                    if ('종근당' in entp_kor or 'CHONG KUN DANG' in entp_eng) and raw_dt >= limit_date:
-                        found.append(f"✅ {item_name} / {raw_dt}")
+                    # 영문명에 'CHONG KUN DANG'이 들어있으면 무조건 낚음
+                    if 'CHONG KUN DANG' in entp_eng and raw_dt >= limit_date:
+                        found.append(f"✅ {item_name} ({raw_dt})")
 
-        # 3. 결과 메시지 구성 (스크린샷의 데이터가 나오도록 최적화)
+        # 3. 텔레그램 전송
         if found:
-            # 중복 제거 및 최신순 정렬
-            final_list = sorted(list(set(found)), reverse=True)
-            msg = f"🚀 [종근당 신규 허가 알림]\n\n" + "\n".join(final_list)
+            msg = f"🚀 [종근당 신규 허가 감지!]\n\n" + "\n".join(sorted(list(set(found)), reverse=True))
         else:
             msg = f"🔔 최근 1주일 종근당 내역 없음\n(식약처 API DB 동기화 대기 중...)"
 
         requests.post(f"https://api.telegram.org/bot{token}/sendMessage", data={'chat_id': chat_id, 'text': msg})
 
     except Exception as e:
-        requests.post(f"https://api.telegram.org/bot{token}/sendMessage", data={'chat_id': chat_id, 'text': f"❌ 시스템 에러: {str(e)}"})
+        requests.post(f"https://api.telegram.org/bot{token}/sendMessage", data={'chat_id': chat_id, 'text': f"❌ 에러: {str(e)}"})
 
 if __name__ == "__main__":
     check_pharm_approvals()
