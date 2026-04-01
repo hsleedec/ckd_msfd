@@ -2,14 +2,20 @@ name: CKD Bot Actions
 
 on:
   schedule:
-    - cron: '47 0,2,4,6 * * *' # 한국시간 09,11,13,15:47
-  workflow_dispatch: # 수동 실행 버튼
+    # 한국 시간(KST) 기준: 09:47, 11:47, 13:47, 15:47
+    # UTC 시간 기준 (KST - 9시간): 00:47, 02:47, 04:47, 06:47
+    - cron: '47 0 * * *'
+    - cron: '47 2 * * *'
+    - cron: '47 4 * * *'
+    - cron: '47 6 * * *'
+  workflow_dispatch: # 수동 실행 버튼을 활성화합니다.
 
 jobs:
   run_bot:
     runs-on: ubuntu-latest
     env:
-      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true # Node.js 24 강제 사용 (경고 제거)
+      # Node.js 20 경고를 없애고 최신 버전을 사용하도록 강제합니다.
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -24,6 +30,7 @@ jobs:
 
       - name: Run Script
         env:
+          # GitHub Secrets에 등록된 값들을 불러옵니다.
           DATA_GO_KR_API_KEY: ${{ secrets.DATA_GO_KR_API_KEY }}
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
