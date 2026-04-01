@@ -1,6 +1,7 @@
 import requests
 import os
 from datetime import datetime, timedelta
+import time
 
 def check_pharm_approvals():
     # 1. GitHub Secrets에서 환경변수 가져오기
@@ -20,8 +21,12 @@ def check_pharm_approvals():
     try:
         # API 호출
         res = requests.get(url, params=params, timeout=30)
-        data = res.json()
-        items = data.get('body', {}).get('items', [])
+        
+        # 식약처 API 응답 로그 추가
+        api_data = res.json()
+        print("식약처 API 응답:", api_data)  # 응답 데이터 확인
+
+        items = api_data.get('body', {}).get('items', [])
 
         if isinstance(items, dict):  # 결과가 1건일 경우 예외처리
             items = [items]
@@ -51,10 +56,18 @@ def check_pharm_approvals():
         # 4. 텔레그램 전송
         response = requests.post(f"https://api.telegram.org/bot{token}/sendMessage", 
                                  data={'chat_id': chat_id, 'text': msg})
-        print(response.json())  # 텔레그램 응답 로그 추가
+        
+        # 텔레그램 응답 로그 추가
+        response_data = response.json()
+        print("텔레그램 응답:", response_data)  # 응답 데이터 확인
+
+        # 속도 제한에 걸릴 경우 일정 시간 대기
+        if response_data.get('error_code') == 429:  # Too Many Requests 에러 확인
+            print("속도 제한에 걸림. 대기 중...")
+            time.sleep(10)  # 10초 대기 후 재시도
 
     except Exception as e:
         error_msg = f"❌ 시스템 에러 발생: {str(e)}"
         response = requests.post(f"https://api.telegram.org/bot{token}/sendMessage", 
                                  data={'chat_id': chat_id, 'text': error_msg})
-        print(response.json())  # 텔레그램 에러 응답 로그 추가
+        print("텔레그램 에러 응답:", response.json())  # 텔레그램 에러 응답 로그 추가
