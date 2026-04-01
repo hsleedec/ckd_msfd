@@ -15,7 +15,65 @@ def check_pharm_approvals():
         'numOfRows': '100',
         'pageNo': '1'
     }
+import requests
+import os
+from datetime import datetime, timedelta
 
+def check_pharm_approvals():
+    # 1. 환경변수 로드
+    api_key = os.environ.get('DATA_GO_KR_API_KEY')
+    token = os.environ.get('TELEGRAM_TOKEN')
+    chat_id = os.environ.get('TELEGRAM_CHAT_ID')
+
+    url = 'http://apis.data.go.kr/1471000/DrugPrdtPrmsnInfoService07/getDrugPrdtPrmsnInq07'
+    params = {
+        'serviceKey': api_key,
+        'type': 'json',
+        'numOfRows': '100',
+        'pageNo': '1'
+    }
+
+    try:
+        res = requests.get(url, params=params, timeout=30)
+        items = res.json().get('body', {}).get('items', [])
+
+        if isinstance(items, dict):
+            items = [items]
+
+        found = []
+        # 핵심: API와 똑같은 8자리 숫자 형식(20260325)으로 비교 기준 생성
+        today = datetime.today()
+        one_week_ago_str = (today - timedelta(days=7)).strftime('%Y%m%d') 
+
+        if items:
+            for i in items:
+                entp = i.get('entp_name', '')
+                item_name = i.get('item_name', '')
+                prmsn_dt = i.get('prmsn_dt', '').replace('-', '') # 혹시 모를 하이픈 제거 후 숫자만 추출
+                
+                # '종근당'이 포함되고, 날짜가 7일 전보다 크거나 같으면 수집
+                if prmsn_dt >= one_week_ago_str and '종근당' in entp:
+                    found.append(f"✅ {item_name} ({prmsn_dt})")
+
+        # 3. 메시지 구성
+        if found:
+            found = sorted(list(set(found)), reverse=True)
+            msg = f"🚀 [종근당 신규 허가 알림]\n(기준: {one_week_ago_str} 이후 건)\n\n" + "\n".join(found)
+        else:
+            # 작동 확인을 위해 가장 최신 데이터의 날짜를 찍어줌
+            latest_dt = items[0].get('prmsn_dt', '알수없음') if items else "없음"
+            msg = f"🔔 최근 1주일간 종근당 허가 내역이 없습니다.\n(API 최신 데이터 날짜: {latest_dt})"
+
+        # 4. 텔레그램 전송
+        requests.post(f"https://api.telegram.org/bot{token}/sendMessage", 
+                      data={'chat_id': chat_id, 'text': msg})
+
+    except Exception as e:
+        requests.post(f"https://api.telegram.org/bot{token}/sendMessage", 
+                      data={'chat_id': chat_id, 'text': f"❌ 에러: {str(e)}"})
+
+if __name__ == "__main__":
+    check_pharm_approvals()
     try:
         res = requests.get(url, params=params, timeout=30)
         api_data = res.json()
