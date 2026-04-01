@@ -27,6 +27,7 @@ def check_pharm_approvals():
         print("식약처 API 응답:", api_data)  # 응답 데이터 확인
 
         items = api_data.get('body', {}).get('items', [])
+        print("API에서 받은 데이터:", items)  # items 데이터 출력
 
         if isinstance(items, dict):  # 결과가 1건일 경우 예외처리
             items = [items]
@@ -41,6 +42,9 @@ def check_pharm_approvals():
                 entp = i.get('entp_name', '')
                 item_name = i.get('item_name', '')
                 prmsn_dt = i.get('prmsn_dt', '')
+                
+                # 날짜 필터링
+                print(f"허가일: {prmsn_dt}, 오늘: {today.strftime('%Y-%m-%d')}, 7일 전: {one_week_ago_str}")
 
                 # 허가일이 최근 7일 이내에 해당하는지 확인
                 if prmsn_dt >= one_week_ago_str and '종근당' in entp:
@@ -59,7 +63,7 @@ def check_pharm_approvals():
         
         # 텔레그램 응답 로그 추가
         response_data = response.json()
-        print("텔레그램 응답:", response_data)  # 응답 데이터 확인
+        print("텔레그램 응답:", response_data)  # 텔레그램 응답 확인
 
         # 속도 제한에 걸릴 경우 일정 시간 대기
         if response_data.get('error_code') == 429:  # Too Many Requests 에러 확인
