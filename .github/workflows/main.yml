@@ -1,36 +1,23 @@
-name: CKD Bot Actions
+name: Weekly Pharm Check
 
 on:
   schedule:
-    # 한국 시간(KST) 기준: 09:47, 11:47, 13:47, 15:47
-    # UTC 시간 기준 (KST - 9시간): 00:47, 02:47, 04:47, 06:47
-    - cron: '47 0 * * *'
-    - cron: '47 2 * * *'
-    - cron: '47 4 * * *'
-    - cron: '47 6 * * *'
-  workflow_dispatch: # 수동 실행 버튼을 활성화합니다.
+    - cron: '0 0 * * 0' # 매주 일요일 00:00 UTC (한국 시간 월요일 오전 9시)
+  workflow_dispatch: # 수동 실행 버튼
 
 jobs:
-  run_bot:
+  build:
     runs-on: ubuntu-latest
-    env:
-      # Node.js 20 경고를 없애고 최신 버전을 사용하도록 강제합니다.
-      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
+      - uses: actions/checkout@v2
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v2
         with:
-          python-version: '3.10'
-
+          python-version: '3.9'
       - name: Install dependencies
         run: pip install requests
-
       - name: Run Script
         env:
-          # GitHub Secrets에 등록된 값들을 불러옵니다.
           DATA_GO_KR_API_KEY: ${{ secrets.DATA_GO_KR_API_KEY }}
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
