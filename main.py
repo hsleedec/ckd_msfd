@@ -9,15 +9,11 @@ def check_pharm_approvals():
     url = 'http://apis.data.go.kr/1471000/DrugPrdtPrmsnInfoService07/getDrugPrdtPrmsnInq07'
     
     try:
-        # 1. 날짜 설정: 최근 7일 (낭낭하게 1주일)
+        # 1. 날짜 설정: 최근 7일 (4월 2일 기준 3월 26일까지 커버)
         now = datetime.now()
         start_date = (now - timedelta(days=7)).strftime('%Y%m%d')
         end_date = now.strftime('%Y%m%d')
 
-        found = []
-        
-        # 2. 최신 데이터 1페이지(100건) 요청
-        # (날짜 구간을 지정했으므로 1페이지 100건 안에 1주일치 데이터는 다 들어옵니다)
         params = {
             'serviceKey': api_key,
             'type': 'json',
@@ -28,42 +24,45 @@ def check_pharm_approvals():
         }
         
         res = requests.get(url, params=params, timeout=30)
+        res.raise_for_status()  # 상태 코드 확인
         res_json = res.json()
         
-        # API 응답 구조가 가끔 바뀔 때를 대비해 안전하게 items 추출
-        body = res_json.get('body', {})
-        items_data = body.get('items', [])
+        # 데이터가 들어있는 바구니(items) 찾기
+        items_data = res_json.get('body', {}).get('items', [])
         items = [items_data] if isinstance(items_data, dict) else items_data
 
+        found = []
+        
         if items and items[0]:
             for i in items:
-                # [핵심] 필드명을 따지지 않고 전체 데이터를 문자열로 변환 (전수 조사)
-                raw_data_string = str(i).upper()
-                item_name = i.get('item_name', '제품명 미확인')
-                prmsn_dt = i.get('prmsn_dt', '날짜 미확인')
-
-                # '종근당' 관련 키워드가 하나라도 걸리면 낚시 성공
-                if ('종근당' in raw_data_string) or ('CHONG KUN DANG' in raw_data_string) or ('CKD' in raw_data_string):
+                # [개선] 대문자/소문자 상관없이 제품명과 날짜를 추출
+                # 식약처 API가 대소문자를 섞어 써도 다 잡아냅니다.
+                item_name = i.get('item_name') or i.get('ITEM_NAME') or "이름모를약"
+                prmsn_dt = i.get('prmsn_dt') or i.get('PRMSN_DT') or "날짜모름"
+                
+                # 데이터 전체를 글자로 바꿔서 '종근당' 키워드 수색
+                raw_str = str(i).upper()
+                if ('종근당' in raw_str) or ('CHONG KUN DANG' in raw_str) or ('CKD' in raw_str):
                     found.append(f"✅ {item_name} ({prmsn_dt})")
 
         # 3. 결과 보고
         if found:
-            # 중복 제거 및 정렬
-            msg = f"🚀 [종근당 신규 허가 확인]\n기간: {start_date} ~ {end_date}\n\n" + "\n".join(sorted(list(set(found)), reverse=True))
+            msg = f"🚀 [종근당 신규 허가 확인]\n({start_date}~{end_date})\n\n" + "\n".join(sorted(list(set(found)), reverse=True))
         else:
-            # 여전히 실패 시, API가 도대체 뭘 보내주고 있는지 '현장 생중계'
-            sample_item = items[0] if items else "응답 데이터 없음"
-            msg = (f"🔔 최근 1주일 종근당 내역 없음\n"
+            # [필살기] 내역이 없으면, 아예 API가 보내준 '날것의 데이터'를 그대로 텔레그램에 쏩니다.
+            # 이걸 보면 왜 안 낚이는지 제가 100% 잡아낼 수 있습니다.
+            sample_raw = str(items[0]) if items else "데이터 없음"
+            msg = (f"🔔 이번 주 종근당 내역 없음\n"
                    f"━━━━━━━━━━━━━━━━━━\n"
-                   f"📡 [API 실시간 응답 샘플]\n"
-                   f"👉 {str(sample_item)[:100]}...\n"
+                   f"📡 [API 실제 응답 데이터 1건]\n"
+                   f"{sample_raw[:200]}\n"
                    f"━━━━━━━━━━━━━━━━━━\n"
-                   f"※ 이 샘플에도 데이터가 없으면 식약처 서버가 텅 빈 겁니다.")
+                   f"※ 이 글자들 사이에 '종근당'이 없으면 API 서버가 범인입니다.")
 
         requests.post(f"https://api.telegram.org/bot{token}/sendMessage", data={'chat_id': chat_id, 'text': msg})
 
     except Exception as e:
-        requests.post(f"https://api.telegram.org/bot{token}/sendMessage", data={'chat_id': chat_id, 'text': f"❌ 에러 상세: {str(e)}"})
+        requests.post(f"https://api.telegram.org/bot{token}/sendMessage", data={'chat_id': chat_id, 'text': f"❌ 에러 발생: {str(e)}"})
 
 if __name__ == "__main__":
     check_pharm_approvals()
