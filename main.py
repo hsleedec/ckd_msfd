@@ -9,17 +9,17 @@ def check_pharm_approvals():
     url = 'http://apis.data.go.kr/1471000/DrugPrdtPrmsnInfoService07/getDrugPrdtPrmsnInq07'
     
     try:
-        # 1. 날짜 설정: 최근 7일 (4월 2일 기준 3월 26일까지 커버)
+        # 1. 날짜 설정: 최근 30일 데이터로 범위 설정 (예시: 2023년 3월 2일부터 4월 2일까지)
         now = datetime.now()
-        start_date = (now - timedelta(days=7)).strftime('%Y%m%d')
-        end_date = now.strftime('%Y%m%d')
+        start_date = (now - timedelta(days=30)).strftime('%Y%m%d')  # 최근 30일로 설정
+        end_date = now.strftime('%Y%m%d')  # 오늘 날짜
 
         params = {
             'serviceKey': api_key,
             'type': 'json',
-            'numOfRows': '100',
+            'numOfRows': '100',  # 최대 100개씩 불러오기
             'pageNo': '1',
-            'start_prmsn_dt': start_date,
+            'start_prmsn_dt': start_date,  # 최근 30일 데이터
             'end_prmsn_dt': end_date
         }
         
