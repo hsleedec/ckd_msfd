@@ -9,56 +9,61 @@ def check_pharm_approvals():
     url = 'http://apis.data.go.kr/1471000/DrugPrdtPrmsnInfoService07/getDrugPrdtPrmsnInq07'
     
     try:
-        # [날짜 조건] 오늘부터 6개월(180일) 전까지로 대폭 확대
+        # 1. 날짜 설정: 최근 7일 (낭낭하게 1주일)
         now = datetime.now()
-        start_date = (now - timedelta(days=180)).strftime('%Y%m%d')
+        start_date = (now - timedelta(days=7)).strftime('%Y%m%d')
         end_date = now.strftime('%Y%m%d')
 
         found = []
-        # 최근 6개월 데이터가 많을 수 있으므로 1~5페이지(총 500건)까지 전수조사
-        for page in range(1, 6):
-            params = {
-                'serviceKey': api_key,
-                'type': 'json',
-                'numOfRows': '100',
-                'pageNo': str(page),
-                'start_prmsn_dt': start_date,
-                'end_prmsn_dt': end_date
-            }
-            
-            res = requests.get(url, params=params, timeout=30)
-            items_raw = res.json().get('body', {}).get('items', [])
-            items = [items_raw] if isinstance(items_raw, dict) else items_raw
+        
+        # 2. 최신 데이터 1페이지(100건) 요청
+        # (날짜 구간을 지정했으므로 1페이지 100건 안에 1주일치 데이터는 다 들어옵니다)
+        params = {
+            'serviceKey': api_key,
+            'type': 'json',
+            'numOfRows': '100',
+            'pageNo': '1',
+            'start_prmsn_dt': start_date,
+            'end_prmsn_dt': end_date
+        }
+        
+        res = requests.get(url, params=params, timeout=30)
+        res_json = res.json()
+        
+        # API 응답 구조가 가끔 바뀔 때를 대비해 안전하게 items 추출
+        body = res_json.get('body', {})
+        items_data = body.get('items', [])
+        items = [items_data] if isinstance(items_data, dict) else items_data
 
-            if not items or not items[0]:
-                break # 더 이상 데이터가 없으면 중단
-
+        if items and items[0]:
             for i in items:
-                entp_kor = str(i.get('entp_name', ''))
-                entp_eng = str(i.get('entp_eng_name', '')).upper()
-                item_name = str(i.get('item_name', ''))
-                prmsn_dt = str(i.get('prmsn_dt', ''))
+                # [핵심] 필드명을 따지지 않고 전체 데이터를 문자열로 변환 (전수 조사)
+                raw_data_string = str(i).upper()
+                item_name = i.get('item_name', '제품명 미확인')
+                prmsn_dt = i.get('prmsn_dt', '날짜 미확인')
 
-                # 종근당 또는 CHONG KUN DANG 포함 여부 확인
-                if ('종근당' in entp_kor) or ('CHONG KUN DANG' in entp_eng):
+                # '종근당' 관련 키워드가 하나라도 걸리면 낚시 성공
+                if ('종근당' in raw_data_string) or ('CHONG KUN DANG' in raw_data_string) or ('CKD' in raw_data_string):
                     found.append(f"✅ {item_name} ({prmsn_dt})")
 
-        # 결과 전송
+        # 3. 결과 보고
         if found:
-            # 중복 제거 및 날짜 최신순 정렬
-            final_list = sorted(list(set(found)), reverse=True)
-            msg = f"🚀 [종근당 6개월 허가 리포트]\n조회범위: {start_date} ~ {end_date}\n\n" + "\n".join(final_list)
+            # 중복 제거 및 정렬
+            msg = f"🚀 [종근당 신규 허가 확인]\n기간: {start_date} ~ {end_date}\n\n" + "\n".join(sorted(list(set(found)), reverse=True))
         else:
-            msg = f"🔔 최근 6개월간 종근당 허가 내역이 API상에 없습니다.\n(조회범위: {start_date} ~ {end_date})"
-
-        # 메시지가 너무 길면 텔레그램에서 잘릴 수 있으니 4000자 단위로 끊어서 전송 가능성 대비
-        if len(msg) > 4000:
-            msg = msg[:3900] + "\n... (이하 생략)"
+            # 여전히 실패 시, API가 도대체 뭘 보내주고 있는지 '현장 생중계'
+            sample_item = items[0] if items else "응답 데이터 없음"
+            msg = (f"🔔 최근 1주일 종근당 내역 없음\n"
+                   f"━━━━━━━━━━━━━━━━━━\n"
+                   f"📡 [API 실시간 응답 샘플]\n"
+                   f"👉 {str(sample_item)[:100]}...\n"
+                   f"━━━━━━━━━━━━━━━━━━\n"
+                   f"※ 이 샘플에도 데이터가 없으면 식약처 서버가 텅 빈 겁니다.")
 
         requests.post(f"https://api.telegram.org/bot{token}/sendMessage", data={'chat_id': chat_id, 'text': msg})
 
     except Exception as e:
-        requests.post(f"https://api.telegram.org/bot{token}/sendMessage", data={'chat_id': chat_id, 'text': f"❌ 에러 발생: {str(e)}"})
+        requests.post(f"https://api.telegram.org/bot{token}/sendMessage", data={'chat_id': chat_id, 'text': f"❌ 에러 상세: {str(e)}"})
 
 if __name__ == "__main__":
     check_pharm_approvals()
