@@ -3,6 +3,29 @@ import os
 from datetime import datetime, timedelta
 
 
+def extract_date(item):
+    """
+    날짜 필드 자동 탐색 (공공데이터 구조 변형 대응)
+    """
+    possible_keys = [
+        'prmsn_dt',
+        'PRMSN_DT',
+        'prdlst_prmsn_ymd',
+        'PRDLST_PRMSN_YMD',
+        'prdlstPrmsnYmd',
+        'item_prmsn_dt',
+        'permit_dt',
+        'PERMIT_DT'
+    ]
+
+    for k in possible_keys:
+        v = item.get(k)
+        if v:
+            return v
+
+    return None
+
+
 def check_chongkundang_latest():
     api_key = os.environ.get('DATA_GO_KR_API_KEY')
     token = os.environ.get('TELEGRAM_TOKEN')
@@ -11,7 +34,7 @@ def check_chongkundang_latest():
     url = 'http://apis.data.go.kr/1471000/DrugPrdtPrmsnInfoService07/getDrugPrdtPrmsnInq07'
 
     try:
-        # 1. 최근 30일 범위
+        # 1. 기간 설정 (최근 30일)
         now = datetime.now()
         start_date = (now - timedelta(days=30)).strftime('%Y%m%d')
         end_date = now.strftime('%Y%m%d')
@@ -29,51 +52,58 @@ def check_chongkundang_latest():
         res.raise_for_status()
         data = res.json()
 
+        # 2. items 구조 방어 처리
         items = data.get('body', {}).get('items', [])
+
+        if isinstance(items, dict):
+            items = items.get('item', items)
+
         if isinstance(items, dict):
             items = [items]
 
+        if not isinstance(items, list):
+            items = []
+
         filtered = []
 
-        # 2. 종근당 필터링
+        # 3. CKD 필터 + 날짜 추출
         for i in items:
             raw = str(i).upper()
 
             if ('종근당' in raw) or ('CHONG KUN DANG' in raw) or ('CKD' in raw):
-                item_name = i.get('item_name') or i.get('ITEM_NAME', '이름없음')
-                prmsn_dt = i.get('prmsn_dt') or i.get('PRMSN_DT', '00000000')
+
+                date = extract_date(i)
+                name = i.get('item_name') or i.get('ITEM_NAME') or 'unknown'
 
                 filtered.append({
-                    "name": item_name,
-                    "date": prmsn_dt
+                    'name': name,
+                    'date': date
                 })
 
-        # 3. 허가일 기준 최신순 정렬
-        filtered = sorted(filtered, key=lambda x: x['date'], reverse=True)
+        # 4. 날짜 없는 데이터 제거
+        filtered = [x for x in filtered if x['date']]
 
-        latest = filtered[:5]  # 최신 5건
+        # 5. 최신순 정렬 (핵심)
+        filtered.sort(key=lambda x: x['date'], reverse=True)
 
-        # 4. 메시지 생성
+        latest = filtered[:5]
+
+        # 6. 메시지 생성
         if latest:
-            msg_lines = [
-                "🚀 종근당 최신 허가 TOP",
-                f"기간: {start_date} ~ {end_date}",
-                ""
-            ]
+            msg = "🚀 종근당 최신 허가 TOP\n"
+            msg += f"기간: {start_date} ~ {end_date}\n\n"
 
             for x in latest:
-                msg_lines.append(f"✔ {x['name']} ({x['date']})")
-
-            msg = "\n".join(msg_lines)
+                msg += f"✔ {x['name']} ({x['date']})\n"
 
         else:
             msg = (
-                "🔔 종근당 최근 허가 없음\n"
+                "🔔 종근당 데이터 없음\n"
                 f"조회기간: {start_date} ~ {end_date}\n"
-                "※ API 응답에는 종근당 데이터가 없음"
+                "※ 필터 조건 또는 API 구조 확인 필요"
             )
 
-        # 5. 텔레그램 전송
+        # 7. 텔레그램 전송
         requests.post(
             f"https://api.telegram.org/bot{token}/sendMessage",
             data={
